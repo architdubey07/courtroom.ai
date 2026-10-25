@@ -119,6 +119,7 @@ export function App() {
             session={session}
             onSubmitArgument={handleSubmitArgument}
             onEndHearing={handleEndHearing}
+            onNewHearing={handleNewHearing}
             isLoading={isLoading}
             error={error}
           />

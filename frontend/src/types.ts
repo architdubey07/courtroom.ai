@@ -11,6 +11,23 @@ export interface HearingMessage {
   timestamp: string;
 }
 
+export interface SimulatedVerdict {
+  topic_summary: string;
+  user_side: Side;
+  opposition_side: Side;
+  user_main_arguments: string[];
+  opposition_main_arguments: string[];
+  user_strongest_point: string;
+  opposition_strongest_point: string;
+  user_weaknesses_and_gaps: string[];
+  opposition_weaknesses_and_gaps: string[];
+  rebuttal_analysis: string;
+  simulated_outcome: string;
+  judicial_reasoning: string;
+  advocacy_feedback_for_user: string[];
+  disclaimer: string;
+}
+
 export interface HearingSession {
   session_id: string;
   topic: string;
@@ -19,7 +36,10 @@ export interface HearingSession {
   difficulty: Difficulty;
   current_round: number;
   is_active: boolean;
+  is_processing?: boolean;
+  current_turn?: SpeakerRole;
   messages: HearingMessage[];
+  verdict?: SimulatedVerdict | null;
   created_at: string;
 }
 

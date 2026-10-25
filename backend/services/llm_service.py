@@ -1,5 +1,7 @@
 import logging
-from typing import Optional
+import json
+import re
+from typing import Optional, Dict, Any
 from fastapi import HTTPException
 from config import settings
 
@@ -50,10 +52,35 @@ class LLMService:
                 )
             )
 
+    async def generate_json_response(self, system_instruction: str, user_content: str = "") -> Dict[str, Any]:
+        raw_text = await self.generate_response(system_instruction, user_content)
+        cleaned = raw_text.strip()
+        if cleaned.startswith("```"):
+            lines = cleaned.splitlines()
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            cleaned = "\n".join(lines).strip()
+
+        try:
+            return json.loads(cleaned)
+        except Exception:
+            match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group(0))
+                except Exception:
+                    pass
+            logger.error(f"Failed to parse LLM response as JSON. Raw output: {raw_text[:300]}")
+            raise HTTPException(
+                status_code=502,
+                detail="Failed to generate a valid structured verdict from the LLM provider."
+            )
+
     async def _call_gemini(self, prompt: str) -> str:
         try:
             model_name = settings.LLM_MODEL or "gemini-2.5-flash"
-            # Using synchronous client call in threadpool or direct
             import asyncio
             loop = asyncio.get_event_loop()
             
@@ -102,7 +129,6 @@ class LLMService:
 
     @staticmethod
     def _sanitize_error(err_str: str) -> str:
-        # Prevent any accidental leakage of API key strings or internal paths
         clean = err_str.replace(settings.GEMINI_API_KEY or "___none___", "[REDACTED]")
         clean = clean.replace(settings.OPENAI_API_KEY or "___none___", "[REDACTED]")
         return clean[:300]

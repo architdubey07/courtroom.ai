@@ -10,13 +10,16 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  AlertTriangle,
 } from 'lucide-react';
 import type { HearingSession } from '../types';
+import { VerdictView } from './VerdictView';
 
 interface CourtroomScreenProps {
   session: HearingSession;
   onSubmitArgument: (argument: string) => Promise<void>;
   onEndHearing: () => Promise<void>;
+  onNewHearing: () => void;
   isLoading: boolean;
   error: string | null;
 }
@@ -25,6 +28,7 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
   session,
   onSubmitArgument,
   onEndHearing,
+  onNewHearing,
   isLoading,
   error,
 }) => {
@@ -32,16 +36,19 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
   const [showFullTopic, setShowFullTopic] = useState(false);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const transcriptTopRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll transcript on new message
+  // Auto-scroll transcript on new message or loading
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [session.messages, isLoading]);
+    if (!session.verdict) {
+      transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [session.messages, isLoading, session.verdict]);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!argumentText.trim() || isLoading || !session.is_active) return;
+    if (!argumentText.trim() || isLoading || !session.is_active || session.is_processing) return;
 
     const text = argumentText.trim();
     setArgumentText('');
@@ -53,6 +60,10 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
       e.preventDefault();
       handleSubmit();
     }
+  };
+
+  const scrollToTranscript = () => {
+    transcriptTopRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const userSideLabel = session.user_side === 'petitioner' ? 'Petitioner' : 'Respondent';
@@ -81,7 +92,7 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
         }}>
           {/* Proposition / Case Info */}
           <div style={{ flex: '1 1 500px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
               <span className="badge badge-gold" style={{ fontSize: '0.7rem' }}>
                 MOOT CASE PROPOSITION
               </span>
@@ -94,6 +105,15 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
               <span className="badge badge-subtle">
                 Round {session.current_round}
               </span>
+              {session.is_active ? (
+                <span className="badge badge-gold" style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#86efac', borderColor: 'rgba(34, 197, 94, 0.3)' }}>
+                  Active Hearing
+                </span>
+              ) : (
+                <span className="badge badge-gold">
+                  Hearing Concluded
+                </span>
+              )}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
@@ -134,20 +154,23 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {session.is_active ? (
               showEndConfirm ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '0.8rem', color: '#fca5a5' }}>Adjourn now?</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(239, 68, 68, 0.12)', padding: '6px 10px', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                  <AlertTriangle size={15} color="#fca5a5" />
+                  <span style={{ fontSize: '0.8rem', color: '#fca5a5' }}>Adjourn & get verdict?</span>
                   <button
                     onClick={() => {
                       setShowEndConfirm(false);
                       onEndHearing();
                     }}
+                    disabled={isLoading}
                     className="btn btn-danger"
                     style={{ padding: '6px 12px', fontSize: '0.8rem' }}
                   >
-                    Confirm Adjournment
+                    Yes, Render Verdict
                   </button>
                   <button
                     onClick={() => setShowEndConfirm(false)}
+                    disabled={isLoading}
                     className="btn btn-secondary"
                     style={{ padding: '6px 10px', fontSize: '0.8rem' }}
                   >
@@ -157,18 +180,22 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
               ) : (
                 <button
                   onClick={() => setShowEndConfirm(true)}
+                  disabled={isLoading}
                   className="btn btn-secondary"
                   style={{ padding: '8px 14px', fontSize: '0.85rem' }}
                 >
                   <Clock size={15} />
-                  <span>Conclude Hearing</span>
+                  <span>Conclude Hearing & Render Verdict</span>
                 </button>
               )
             ) : (
-              <div className="badge badge-gold" style={{ padding: '8px 14px', fontSize: '0.85rem' }}>
-                <CheckCircle2 size={16} />
-                <span>Court Adjourned</span>
-              </div>
+              <button
+                onClick={onNewHearing}
+                className="btn btn-primary"
+                style={{ padding: '8px 14px', fontSize: '0.85rem' }}
+              >
+                <span>Start New Docket</span>
+              </button>
             )}
           </div>
         </div>
@@ -190,6 +217,18 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
           <div style={{ fontSize: '0.9rem' }}>{error}</div>
         </div>
       )}
+
+      {/* Structured Verdict Banner if Hearing has Concluded */}
+      {session.verdict && (
+        <VerdictView
+          verdict={session.verdict}
+          onNewHearing={onNewHearing}
+          onScrollToTranscript={scrollToTranscript}
+        />
+      )}
+
+      {/* Anchor for scrolling back to transcript */}
+      <div ref={transcriptTopRef} />
 
       {/* Main 3-Column Courtroom Layout */}
       <div style={{
@@ -249,7 +288,7 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
                 </>
               ) : (
                 <div style={{ color: 'var(--gold-primary)' }}>
-                  Hearing is formally adjourned. Bench deliberations concluded.
+                  Hearing is formally adjourned. Bench deliberations concluded and final simulated verdict rendered.
                 </div>
               )}
             </div>
@@ -292,12 +331,41 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
             paddingTop: '10px',
             borderTop: '1px solid var(--border-subtle)',
           }}>
-            <strong>Advocacy Tip:</strong> Direct your answers respectfully to the Bench. Reconcile vulnerable points rather than ignoring them.
+            <strong>Advocacy Tip:</strong> Address the Bench with decorum. Answer questions directly before advancing to secondary points.
           </div>
         </div>
 
         {/* CENTER COLUMN: Central Hearing Transcript & Submission Bar */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minHeight: '620px' }}>
+          {/* Turn Banner */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 16px',
+            borderRadius: '8px',
+            background: 'rgba(10, 15, 29, 0.7)',
+            border: '1px solid var(--border-subtle)',
+            fontSize: '0.85rem',
+          }}>
+            <span style={{ color: 'var(--text-dim)' }}>Floor Status:</span>
+            {isLoading ? (
+              <span style={{ color: 'var(--gold-light)', display: 'flex', alignItems: 'center', gap: '6px' }} className="animate-pulse-slow">
+                <Sparkles size={15} />
+                <span>Bench & Opposition deliberating...</span>
+              </span>
+            ) : session.is_active ? (
+              <span style={{ color: 'var(--petitioner-blue)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <User size={15} />
+                <span>Your turn to submit ({userSideLabel} Counsel)</span>
+              </span>
+            ) : (
+              <span style={{ color: 'var(--gold-light)', fontWeight: 600 }}>
+                Hearing Concluded
+              </span>
+            )}
+          </div>
+
           {/* Transcript Scroll Area */}
           <div
             className="court-panel"
@@ -313,10 +381,10 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
             {/* Convening Seal Header */}
             <div style={{ textAlign: 'center', padding: '12px 0 16px', borderBottom: '1px solid var(--border-subtle)' }}>
               <div className="font-serif" style={{ fontSize: '0.85rem', color: 'var(--gold-primary)', letterSpacing: '0.1em' }}>
-                RECORD OF ORAL SUBMISSIONS
+                OFFICIAL RECORD OF ORAL SUBMISSIONS
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                Session ID: {session.session_id.slice(0, 8)}... | Difficulty: {session.difficulty.toUpperCase()}
+                Session: {session.session_id.slice(0, 8)}... | Difficulty: {session.difficulty.toUpperCase()}
               </div>
             </div>
 
@@ -410,7 +478,7 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
               >
                 <Sparkles size={18} />
                 <span>
-                  The Bench and Opposing Counsel are analyzing your submissions and drafting rebuttals...
+                  The Bench and Opposing Counsel are analyzing arguments and drafting submissions...
                 </span>
               </div>
             )}
@@ -439,7 +507,7 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
                   onKeyDown={handleKeyDown}
                   placeholder={`May it please the Court, the ${userSideLabel} submits that...`}
                   rows={4}
-                  disabled={isLoading}
+                  disabled={isLoading || !session.is_active || session.is_processing}
                   style={{
                     width: '100%',
                     background: 'rgba(10, 15, 29, 0.8)',
@@ -464,12 +532,12 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
 
                   <button
                     type="submit"
-                    disabled={isLoading || !argumentText.trim()}
+                    disabled={isLoading || !argumentText.trim() || !session.is_active || session.is_processing}
                     className="btn btn-primary"
                     style={{ padding: '9px 20px', fontSize: '0.9rem' }}
                   >
                     {isLoading ? (
-                      <span>Deliberating...</span>
+                      <span>Court Deliberating...</span>
                     ) : (
                       <>
                         <Send size={15} />
@@ -484,10 +552,10 @@ export const CourtroomScreen: React.FC<CourtroomScreenProps> = ({
             <div className="court-panel" style={{ padding: '20px', textAlign: 'center' }}>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'var(--gold-light)', fontWeight: 600, marginBottom: '6px' }}>
                 <CheckCircle2 size={18} />
-                Hearing Formally Concluded
+                Hearing Formally Adjourned
               </div>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', margin: 0 }}>
-                This moot hearing has been adjourned. You can review the full record of proceedings above or start a new docket.
+                This moot hearing has concluded and the Bench's simulated educational verdict has been rendered above.
               </p>
             </div>
           )}
