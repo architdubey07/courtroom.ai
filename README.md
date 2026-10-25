@@ -1,5 +1,4 @@
-# AI Courtroom Simulator
-
+# Courtroom.ai
 An immersive, professional web application designed for law students to practise moot court oral arguments against an AI Opposing Counsel under the management of an impartial AI Presiding Judge, culminating in a structured, reasoned judicial verdict.
 
 ---
