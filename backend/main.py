@@ -37,14 +37,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/api/health", response_model=SystemHealthResponse)
-async def health_check():
+def _build_health_response() -> SystemHealthResponse:
+    """Shared logic for both health endpoints."""
     return SystemHealthResponse(
         status="healthy",
         llm_configured=llm_service.is_configured(),
         provider=settings.provider,
         default_model=settings.default_model if llm_service.is_configured() else None
     )
+
+@app.get("/api/health", response_model=SystemHealthResponse, tags=["System"])
+async def health_check():
+    """Primary health endpoint. Returns LLM configuration status."""
+    return _build_health_response()
+
+@app.get("/health", response_model=SystemHealthResponse, tags=["System"])
+async def health_check_alias():
+    """
+    Backward-compatible alias for GET /api/health.
+    Exists so that direct curl checks and any tooling that omits the /api
+    prefix still receive a valid response rather than a 404.
+    """
+    return _build_health_response()
+
+@app.get("/v1/models", tags=["System"])
+async def list_models_compat():
+    """
+    Compatibility route for local monitoring tools and AI proxies that
+    periodically query OpenAI-style model discovery endpoints.
+    """
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": settings.default_model,
+                "object": "model",
+                "owned_by": settings.provider or "system"
+            }
+        ]
+    }
 
 @app.post("/api/hearing/start", response_model=HearingStatusResponse)
 async def start_hearing(req: StartHearingRequest):

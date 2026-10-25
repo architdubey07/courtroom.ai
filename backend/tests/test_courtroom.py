@@ -8,12 +8,77 @@ from services.prompt_service import PromptService
 
 client = TestClient(app)
 
-def test_health_endpoint():
+def test_health_endpoint_primary():
+    """GET /api/health must respond 200 with correct schema."""
     response = client.get("/api/health")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
     assert "llm_configured" in data
+    assert "provider" in data
+    assert "default_model" in data
+
+def test_health_endpoint_alias():
+    """
+    GET /health (no /api prefix) must also return 200 — backward-compatible alias.
+    This is the root cause of the originally reported 404: users/tooling hitting /health
+    instead of /api/health.
+    """
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert "llm_configured" in data
+
+def test_health_endpoint_schema_matches():
+    """Both health endpoints must return identical payloads."""
+    r1 = client.get("/api/health").json()
+    r2 = client.get("/health").json()
+    assert r1["status"] == r2["status"]
+    assert r1["llm_configured"] == r2["llm_configured"]
+    assert r1["provider"] == r2["provider"]
+    assert r1["default_model"] == r2["default_model"]
+
+def test_config_gemini_default_model():
+    """
+    Verify the default Gemini model resolves to gemini-3.8-flash (not the
+    deprecated gemini-2.5-flash which is no longer available to new API keys).
+    """
+    from config import Settings
+    import os
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "fake-test-key", "OPENAI_API_KEY": "", "LLM_MODEL": ""}, clear=False):
+        s = Settings()
+        assert s.provider == "gemini"
+        assert s.default_model == "gemini-3.8-flash", (
+            f"Default Gemini model should be gemini-3.8-flash but got {s.default_model}. "
+            "gemini-2.5-flash was deprecated for new API keys as of October 2026."
+        )
+
+def test_config_openai_default_model():
+    """When only an OpenAI key is set and no LLM_MODEL override, default is gpt-4o-mini."""
+    from config import Settings
+    import os
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "", "OPENAI_API_KEY": "fake-openai-key", "LLM_MODEL": ""}, clear=False):
+        s = Settings()
+        assert s.provider == "openai"
+        assert s.default_model == "gpt-4o-mini"
+
+def test_config_llm_model_override():
+    """An explicit LLM_MODEL env var must override provider defaults."""
+    from config import Settings
+    import os
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "fake-key", "LLM_MODEL": "gemini-3.5-flash"}, clear=False):
+        s = Settings()
+        assert s.default_model == "gemini-3.5-flash"
+
+def test_config_no_provider():
+    """When no keys are configured, provider is None and model falls back gracefully."""
+    from config import Settings
+    import os
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "", "OPENAI_API_KEY": "", "LLM_MODEL": ""}, clear=False):
+        s = Settings()
+        assert s.provider is None
+        assert s.default_model == "gpt-4o-mini"
 
 def test_prompt_service_difficulty():
     for diff in [Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD]:
